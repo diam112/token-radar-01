@@ -197,6 +197,9 @@ export interface RadarData {
   live_size: number;
   rows: RadarRow[];
   live: LiveRow[];
+  methodology: MultiplierGuideEntry[];
+  categories: CategoryBoardSummary[];
+  explanations: ScoreExplanation[];
 }
 
 /** Why the snapshot is not one this model can score. */
@@ -526,10 +529,167 @@ export function radarRow(row: BoardRow, watchlist: Set<string>): RadarRow {
   };
 }
 
+/** One row of the methodology table the dashboard renders: what a multiplier means in plain words, the range it can take, and a worked example. */
+export interface MultiplierGuideEntry {
+  factorName: string;
+  plainMeaning: string;
+  rangeText: string;
+  lowEndText: string;
+  highEndText: string;
+  workedExample: string;
+}
+
+/** The five multiplier rows, in the order the dashboard explains them: category first, then growth, maturity, chains, and tier. */
+export function multiplierGuide(): MultiplierGuideEntry[] {
+  const guideRows: MultiplierGuideEntry[] = [
+    {
+      factorName: 'Category multiple',
+      plainMeaning: 'How much of each dollar locked a token in this kind of protocol has historically been worth at launch.',
+      rangeText: '0.10x to 0.38x',
+      lowEndText: 'Bridges and wrappers at 0.10x: the product is a claim on a token that already trades.',
+      highEndText: 'Lending, CDP and derivatives at 0.38x: their tokens price closest to the value they secure.',
+      workedExample: 'A lending protocol locking $100M starts at $38M before the other multipliers apply.',
+    },
+    {
+      factorName: 'Seven-day growth factor',
+      plainMeaning: 'Whether the protocol is gaining or losing locked value this week, and how strongly that moves the launch estimate.',
+      rangeText: '0.52x to 2.20x',
+      lowEndText: 'A protocol down 80% in a week keeps 0.52x: shrinking TVL is evidence, not a reason to drop the row.',
+      highEndText: 'A protocol up 200% in a week gets 2.20x: fast growth lifts the estimate, capped so one hot week cannot dominate.',
+      workedExample: 'A flat week leaves the estimate unchanged at 1.00x; a 50% week lifts it to 1.30x.',
+    },
+    {
+      factorName: 'Maturity factor',
+      plainMeaning: 'How long the protocol has run with no token: a longer record without launching earns a higher multiple.',
+      rangeText: '0.70x to 1.15x',
+      lowEndText: 'Listed yesterday at 0.70x: it has had no time to earn a launch yet.',
+      highEndText: 'Three years with no token at 1.15x: the record itself is worth something.',
+      workedExample: 'A one-year-old protocol sits near 0.85x; an unknown listing date is treated as one year old.',
+    },
+    {
+      factorName: 'Chain diversification factor',
+      plainMeaning: 'How many chains the protocol is live on: more chains reach more farmers and more liquidity.',
+      rangeText: '1.00x to 1.20x',
+      lowEndText: 'A single-chain protocol at 1.00x: no bonus for reach it does not have.',
+      highEndText: 'Six or more chains at 1.20x: each extra chain adds 0.04x, up to five extra chains.',
+      workedExample: 'A protocol on three chains gets 1.08x; a protocol on one chain gets nothing extra.',
+    },
+    {
+      factorName: 'Tier factor',
+      plainMeaning: 'Whether the row is a genuine launch candidate or a discounted product of a token that already trades.',
+      rangeText: '0.15x or 1.00x',
+      lowEndText: 'Tier B at 0.15x and capped below the weakest Tier A row: a wrapped or bridged product cannot launch like a new token.',
+      highEndText: 'Tier A at 1.00x: a launch candidate under the watchlist rule keeps its full modelled value.',
+      workedExample: 'A Tier B row modelled at $10M is carried at $1.5M, and never above the lowest Tier A value.',
+    },
+  ];
+  return guideRows;
+}
+
+/** One category's share of the ranked board: how many rows it holds, what they are worth together, and its strongest row. */
+export interface CategoryBoardSummary {
+  categoryLabel: string;
+  rankedCount: number;
+  combinedImpliedUsd: number;
+  averageImpliedUsd: number;
+  strongestSlug: string;
+  strongestName: string;
+  strongestImpliedUsd: number;
+  watchlistCount: number;
+  launchCandidateCount: number;
+}
+
+/** The per-category summary of a finished board, strongest combined value first. */
+export function buildCategorySummary(board: BoardRow[], watchlist: Set<string>): CategoryBoardSummary[] {
+  const buckets = new Map<string, BoardRow[]>();
+  for (const ranked of board) {
+    const label = ranked.category ?? 'Other';
+    const members = buckets.get(label);
+    if (members === undefined) buckets.set(label, [ranked]);
+    else members.push(ranked);
+  }
+  const summaries: CategoryBoardSummary[] = [];
+  for (const [label, members] of buckets) {
+    const ordered = members.slice().sort((a, b) => b.implied_value_usd - a.implied_value_usd);
+    const strongest = ordered[0]!;
+    const combined = members.reduce((running, member) => running + member.implied_value_usd, 0);
+    const onWatchlist = members.filter((member) => watchlist.has(member.slug)).length;
+    const launchCandidates = members.filter((member) => member.model.tier === 'A').length;
+    summaries.push({
+      categoryLabel: label,
+      rankedCount: members.length,
+      combinedImpliedUsd: combined,
+      averageImpliedUsd: Math.round(combined / members.length),
+      strongestSlug: strongest.slug,
+      strongestName: strongest.name,
+      strongestImpliedUsd: strongest.implied_value_usd,
+      watchlistCount: onWatchlist,
+      launchCandidateCount: launchCandidates,
+    });
+  }
+  summaries.sort((a, b) => b.combinedImpliedUsd - a.combinedImpliedUsd || (a.categoryLabel < b.categoryLabel ? -1 : 1));
+  return summaries;
+}
+
+/** A single protocol's score, broken into every multiplier, with two plain-language sentences the detail view can show. */
+export interface ScoreExplanation {
+  slug: string; // the board row this explanation belongs to
+  protocolName: string;
+  categoryLabel: string;
+  tvlUsd: number;
+  categoryMultiple: number;
+  growthPct: number;
+  growthMultiplier: number;
+  maturityMultiplier: number;
+  chainMultiplier: number;
+  tierLabel: string;
+  tierMultiplier: number;
+  chainCount: number;
+  ageDays: number | null;
+  impliedValueUsd: number;
+  narrativeLines: string[];
+}
+
+/** The score explanation for one board row, derived only from the row's own model figures. */
+export function explainScore(row: BoardRow): ScoreExplanation {
+  const tierLabel = row.model.tier === 'A' ? 'Tier A launch candidate' : 'Tier B discounted';
+  const ageWords = row.age_days === null ? 'an unknown listing date' : `${row.age_days} days listed`;
+  const growthWords = row.model.growth_pct > 0 ? `grew ${row.model.growth_pct}% in the last seven days` : row.model.growth_pct < 0 ? `fell ${Math.abs(row.model.growth_pct)}% in the last seven days` : 'was flat over the last seven days';
+  const explanation: ScoreExplanation = {
+    slug: row.slug, // identifies the protocol this explanation belongs to
+    protocolName: row.name,
+    categoryLabel: row.category ?? 'Other',
+    tvlUsd: row.tvl_usd,
+    categoryMultiple: row.model.category_multiple,
+    growthPct: row.model.growth_pct,
+    growthMultiplier: row.model.growth_multiplier,
+    maturityMultiplier: row.model.maturity_multiplier,
+    chainMultiplier: row.model.chain_multiplier,
+    tierLabel,
+    tierMultiplier: row.model.tier_multiplier,
+    chainCount: row.chains.length,
+    ageDays: row.age_days,
+    impliedValueUsd: row.implied_value_usd,
+    narrativeLines: [
+      `${row.name} locks $${row.tvl_usd.toLocaleString('en-US')}, ${growthWords}, and has ${ageWords} across ${row.chains.length} chain${row.chains.length === 1 ? '' : 's'}.`,
+      `Its ${row.category ?? 'Other'} multiple is ${row.model.category_multiple}x, growth ${row.model.growth_multiplier}x, maturity ${row.model.maturity_multiplier}x, chains ${row.model.chain_multiplier}x and ${tierLabel} ${row.model.tier_multiplier}x, giving $${row.implied_value_usd.toLocaleString('en-US')}.`,
+    ],
+  };
+  return explanation;
+}
+
+/** The score explanation for every row of a finished board, in board order. */
+export function explanationsForBoard(board: BoardRow[]): ScoreExplanation[] {
+  return board.map((ranked) => explainScore(ranked));
+}
+
 /** Everything the dashboard renders, from the snapshot. */
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): { board: BoardRow[]; radar: RadarData } {
   const board = buildBoard(snapshot, model);
   const live = liveRows(snapshot);
+  const watchlistSlugs = new Set(snapshot.watchlist);
+  const categorySummaries = buildCategorySummary(board, watchlistSlugs);
+  const scoreExplanations = explanationsForBoard(board);
   const early = board.filter((r) => !snapshot.watchlist.includes(r.slug)).length;
   const radar: RadarData = {
     as_of: snapshot.as_of,
@@ -543,6 +703,9 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     live_size: live.length,
     rows: board.map((r) => radarRow(r, new Set(snapshot.watchlist))),
     live,
+    methodology: multiplierGuide(),
+    categories: categorySummaries,
+    explanations: scoreExplanations,
   };
   return { board, radar };
 }

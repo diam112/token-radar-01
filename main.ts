@@ -89,7 +89,11 @@ writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEX
 
 const tierA = radar.rows.filter((r) => r.tier === 'A').length;
 const tierB = radar.rows.length - tierA;
+const methodologyRows = radar.methodology.length;
+const categoryPanels = radar.categories.length;
+const explainedRows = radar.explanations.length;
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside; ${tierA} Tier A candidates, ${tierB} discounted Tier B)\n` +
+    `token radar: methodology ${methodologyRows} factors, ${categoryPanels} category summaries, ${explainedRows} score explanations in data.js\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );

@@ -13,6 +13,17 @@
   if (!DATA) return;
   var app = document.getElementById('board');
   var state = { q: '', category: 'all', chain: 'all', watchlistOnly: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null };
+  state.nameQuery = '';
+  // The name filter is separate from the broad search above it: it matches only the protocol
+  // name and slug, so typing a name narrows the board to that protocol and its namesakes.
+  function nameMatches(row) {
+    var needle = state.nameQuery.trim().toLowerCase();
+    if (!needle) return true;
+    return row.name.toLowerCase().indexOf(needle) >= 0 || row.slug.toLowerCase().indexOf(needle) >= 0;
+  }
+  function filteredRows() {
+    return rows().filter(nameMatches);
+  }
 
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function fmtUsd(n) {
@@ -230,6 +241,9 @@
     var chains = Array.from(new Set(DATA.rows.reduce(function (acc, r) { return acc.concat(r.chains || []); }, []))).sort();
     var search = el('input', { type: 'search', id: 'q', placeholder: 'Search name, category or chain', value: state.q, 'aria-label': 'Search the board' });
     search.addEventListener('input', function () { state.q = search.value; writeHash(); render(); });
+    var nameSearch = el('input', { type: 'search', id: 'name-search', placeholder: 'Type a protocol name', value: state.nameQuery, 'aria-label': 'Filter by protocol name' });
+    nameSearch.addEventListener('input', function () { state.nameQuery = nameSearch.value; render(); });
+    var nameClear = el('button', { type: 'button', class: 'name-clear', text: 'Clear name', onclick: function () { state.nameQuery = ''; render(); } });
     var select = el('select', { id: 'category', 'aria-label': 'Filter by category' },
       el('option', { value: 'all', text: 'All categories' }),
       categories.map(function (c) { return el('option', { value: c, text: c, selected: c === state.category ? 'selected' : null }); })
@@ -245,11 +259,12 @@
     var live = el('button', { type: 'button', 'aria-pressed': state.tab === 'live' ? 'true' : 'false', text: 'Live token', onclick: function () { state.tab = 'live'; render(); } });
     return el('div', { class: 'controls' },
       el('div', { class: 'field' }, el('label', { for: 'q', text: 'Search' }), search),
+      el('div', { class: 'field' }, el('label', { for: 'name-search', text: 'Filter by name' }), nameSearch, nameClear),
       el('div', { class: 'field' }, el('label', { for: 'category', text: 'Category' }), select),
       el('div', { class: 'field' }, el('label', { for: 'chain', text: 'Chain' }), chainSelect),
       el('div', { class: 'field' }, el('span', { class: 'sub', text: 'Scope' }), wl),
       el('div', { class: 'field' }, el('span', { class: 'sub', text: 'Token status' }), el('div', { class: 'tabs' }, pre, live)),
-      el('span', { class: 'count', text: state.tab === 'pre-token' ? rows().length + ' rows shown' : DATA.live.length + ' live-token protocols' })
+      el('span', { class: 'count', text: state.tab === 'pre-token' ? filteredRows().length + ' rows shown' : DATA.live.length + ' live-token protocols' })
     );
   }
 
@@ -263,7 +278,7 @@
   }
 
   function boardTable() {
-    var list = sortedRows(rows());
+    var list = sortedRows(filteredRows());
     if (list.length === 0) {
       return el('div', { class: 'panel' }, el('div', { class: 'empty' },
         el('h2', { text: 'No protocol matches that filter' }),
@@ -342,6 +357,63 @@
     );
   }
 
+  // The methodology section reads the multiplier table main.ts writes into data.js, so the
+  // explanation on the page and the model's own numbers can never drift apart.
+  function methodologySection() {
+    var guide = DATA.methodology || [];
+    var cards = guide.map(function (g) {
+      return el('article', { class: 'guide-card' },
+        el('h3', { text: g.factorName }),
+        el('p', { text: g.plainMeaning }),
+        el('p', { class: 'guide-range', text: 'Range: ' + g.rangeText }),
+        el('p', { class: 'sub', text: g.lowEndText }),
+        el('p', { class: 'sub', text: g.highEndText }),
+        el('p', { class: 'guide-example', text: g.workedExample })
+      );
+    });
+    return el('section', { class: 'panel methodology', 'aria-label': 'How the radar scores' },
+      el('h2', { text: 'How the radar scores' }),
+      el('p', { class: 'sub', text: 'Implied value is TVL times five multipliers. Each card below says what its multiplier means, how far it can move, and what it does to a real protocol.' }),
+      el('div', { class: 'guide-grid' }, cards)
+    );
+  }
+
+  // One card per category on the board: how many rows it holds, what they are worth together,
+  // how many are launch candidates, and the strongest protocol in the category.
+  function categoryPanel() {
+    var summaries = (DATA.categories || []).slice().sort(function (a, b) { return b.combinedImpliedUsd - a.combinedImpliedUsd; });
+    var cards = summaries.map(function (s) {
+      return el('article', { class: 'category-card' },
+        el('h3', { text: s.categoryLabel }),
+        el('div', { class: 'category-figures' },
+          el('div', null, el('span', { class: 'sub', text: 'Ranked protocols' }), el('b', { class: 'num', text: String(s.rankedCount) })),
+          el('div', null, el('span', { class: 'sub', text: 'Combined implied value' }), el('b', { class: 'num', text: fmtUsd(s.combinedImpliedUsd) })),
+          el('div', null, el('span', { class: 'sub', text: 'Launch candidates' }), el('b', { class: 'num', text: String(s.launchCandidateCount) })),
+          el('div', null, el('span', { class: 'sub', text: 'On the watchlist' }), el('b', { class: 'num', text: String(s.watchlistCount) }))
+        ),
+        el('p', { class: 'category-top', text: 'Top: ' + s.strongestName + ' at ' + fmtUsd(s.strongestImpliedUsd) })
+      );
+    });
+    return el('section', { class: 'panel category-panel', 'aria-label': 'Categories on the board' },
+      el('h2', { text: 'Categories on the board' }),
+      el('p', { class: 'sub', text: 'The strongest protocol in each category, and what the whole category is worth together.' }),
+      el('div', { class: 'category-grid' }, cards)
+    );
+  }
+
+  // The detail drawer's plain-language score: the per-row explanation data.js carries, with the
+  // same multipliers the equation above it shows, in two sentences a reader can follow.
+  function explanationSection(row) {
+    var found = (DATA.explanations || []).filter(function (e) { return e.slug === row.slug; })[0];
+    if (!found) return null;
+    var lines = found.narrativeLines.map(function (line) { return el('p', { text: line }); });
+    return el('section', { class: 'detail-section' },
+      el('h3', { text: 'Why this score' }),
+      el('p', { class: 'sub', text: found.tierLabel + ' · ' + found.categoryLabel + ' · ' + found.chainCount + ' chain' + (found.chainCount === 1 ? '' : 's') }),
+      lines
+    );
+  }
+
   function modelPanel() {
     var m = DATA.model;
     return el('section', { class: 'panel model' },
@@ -388,6 +460,8 @@
       ),
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
     ));
+    var why = explanationSection(row);
+    if (why) dialog.appendChild(why);
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('h3', { text: 'Farm plan' }),
       el('ol', { class: 'steps' }, steps.map(function (s) {
@@ -410,6 +484,8 @@
     shell.appendChild(header());
     shell.appendChild(lede());
     shell.appendChild(controls());
+    if (state.tab === 'pre-token') shell.appendChild(methodologySection());
+    if (state.tab === 'pre-token') shell.appendChild(categoryPanel());
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
     app.appendChild(shell);

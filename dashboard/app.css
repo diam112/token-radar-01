@@ -107,6 +107,33 @@ tbody tr[data-selected="true"] td:first-child { color: var(--accent); }
 .status.discounted::before { background: var(--amber); }
 
 .model { margin-top: var(--step-4); padding: var(--step-5); display: grid; gap: var(--step-3); }
+.methodology { margin-top: var(--step-4); padding: var(--step-5); display: grid; gap: var(--step-3); }
+.methodology > p { color: var(--muted); max-width: 78ch; }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--step-3); }
+.guide-card { border: 1px solid var(--border); border-radius: var(--radius-panel); padding: var(--step-4); display: grid; gap: var(--step-2); background: var(--wash); align-content: start; }
+.guide-card h3 { font-size: 15px; }
+.guide-card p { font-size: 13px; color: var(--muted); }
+.guide-range { font-family: var(--font-num); font-size: 13px; color: var(--ink); }
+.guide-example { font-size: 13px; color: var(--ink); border-top: 1px solid var(--border); padding-top: var(--step-2); }
+.category-panel { margin-top: var(--step-4); padding: var(--step-5); display: grid; gap: var(--step-3); }
+.category-panel > p { color: var(--muted); max-width: 78ch; }
+.category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--step-3); }
+.category-card { border: 1px solid var(--border); border-radius: var(--radius-panel); padding: var(--step-4); display: grid; gap: var(--step-3); align-content: start; }
+.category-card h3 { font-size: 15px; }
+.category-figures { display: grid; grid-template-columns: 1fr 1fr; gap: var(--step-3); }
+.category-figures > div { display: grid; gap: 2px; }
+.category-figures b { font-size: 14px; }
+.category-top { font-size: 13px; color: var(--ink); border-top: 1px solid var(--border); padding-top: var(--step-2); }
+.field .name-clear { min-width: 0; }
+#name-search { border-color: var(--accent); }
+#name-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.detail-section p + p { margin-top: var(--step-2); }
+.detail-section .sub + p { margin-top: var(--step-2); }
+@media (max-width: 760px) {
+  .guide-grid { grid-template-columns: 1fr; }
+  .category-grid { grid-template-columns: 1fr; }
+  .category-figures { grid-template-columns: 1fr 1fr; }
+}
 .formula { font-family: var(--font-num); font-size: 13px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .empty { padding: var(--step-7) var(--step-5); text-align: center; display: grid; gap: var(--step-3); justify-items: center; }
 .empty p { color: var(--muted); }
